@@ -1,7 +1,9 @@
 import { type Invoice } from '@/contexts/InvoiceContext';
-import { useEffect } from 'react';
-import { X, Printer, Zap } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { X, Printer, Zap, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
+import { uploadPdfAndSendWebhook } from '@/utils/pdfUploader';
 
 const fmt = (n: number) => '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2 });
 
@@ -9,10 +11,12 @@ interface Props {
   invoice: Invoice;
   onClose: () => void;
   autoPrint?: boolean;
+  isNew?: boolean;
 }
 
-export default function InvoicePreview({ invoice, onClose, autoPrint = false }: Props) {
+export default function InvoicePreview({ invoice, onClose, autoPrint = false, isNew = false }: Props) {
   const handlePrint = () => window.print();
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     if (autoPrint) {
@@ -22,6 +26,52 @@ export default function InvoicePreview({ invoice, onClose, autoPrint = false }: 
       return () => clearTimeout(timer);
     }
   }, [autoPrint]);
+
+  useEffect(() => {
+    if (isNew && invoice.customerPhone) {
+      let active = true;
+      const delayTimer = setTimeout(async () => {
+        if (!active) return;
+        setIsSending(true);
+        const toastId = toast.loading('Generating PDF & sending WhatsApp invoice...');
+
+        try {
+          const invoiceDate = new Date(invoice.createdAt).toLocaleDateString('en-IN');
+          const storagePath = `invoices/${invoice.invoiceNumber.replace(/\s+/g, '_')}.pdf`;
+          const filename = `Invoice_${invoice.invoiceNumber.replace(/\s+/g, '_')}.pdf`;
+
+          await uploadPdfAndSendWebhook({
+            elementId: 'invoice-print-area',
+            filename,
+            storagePath,
+            customerPhone: invoice.customerPhone,
+            customerName: invoice.customerName,
+            invoiceNumber: invoice.invoiceNumber,
+            totalAmount: invoice.totalAmount,
+            invoiceDate,
+          });
+
+          if (active) {
+            toast.success('Invoice generated and WhatsApp invoice sent successfully.', { id: toastId, duration: 5000 });
+          }
+        } catch (err: any) {
+          console.error('Error during PDF upload / WhatsApp webhook:', err);
+          if (active) {
+            toast.error(`Failed: ${err.message || String(err)}`, { id: toastId, duration: 8000 });
+          }
+        } finally {
+          if (active) {
+            setIsSending(false);
+          }
+        }
+      }, 1000);
+
+      return () => {
+        active = false;
+        clearTimeout(delayTimer);
+      };
+    }
+  }, [isNew, invoice]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-foreground/40 backdrop-blur-sm" onClick={onClose}>
@@ -36,6 +86,12 @@ export default function InvoicePreview({ invoice, onClose, autoPrint = false }: 
             )}>
               {invoice.paymentStatus}
             </span>
+            {isSending && (
+              <span className="flex items-center gap-1 text-xs text-muted-foreground animate-pulse">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-primary" />
+                Sending PDF...
+              </span>
+            )}
           </div>
           <div className="flex gap-1">
             <button onClick={handlePrint} className="p-1 rounded-lg hover:bg-muted transition-colors text-muted-foreground hover:text-foreground">
@@ -48,7 +104,7 @@ export default function InvoicePreview({ invoice, onClose, autoPrint = false }: 
         </div>
 
         {/* Invoice Body */}
-        <div className="p-6 space-y-6 print-only">
+        <div id="invoice-print-area" className="p-6 space-y-6 print-only bg-white text-black">
           {/* Company Header */}
           <div className="flex items-start justify-between">
             <div className="flex items-center gap-1">

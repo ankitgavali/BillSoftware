@@ -3,6 +3,7 @@ import { initializeApp } from "firebase/app";
 import { getAnalytics } from "firebase/analytics";
 import { getAuth, setPersistence, browserSessionPersistence } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -32,5 +33,6 @@ if (typeof window !== 'undefined') {
 }
 
 const db = getFirestore(app);
+const storage = getStorage(app);
 
-export { app, analytics, auth, db, firebaseConfig };
+export { app, analytics, auth, db, storage, firebaseConfig };

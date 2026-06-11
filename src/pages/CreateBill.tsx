@@ -6,6 +6,7 @@ import { useQuotations } from '@/contexts/QuotationContext';
 import { Plus, Trash2, FileText, Globe, Lock, User, Phone, BadgeCheck } from 'lucide-react';
 import InvoicePreview from '@/components/InvoicePreview';
 import { cn } from '@/lib/utils';
+import { toast } from 'sonner';
 import { useAuth } from '@/contexts/AuthContext';
 import { getEmployees, type Employee } from '@/firebase/firestore';
 
@@ -78,6 +79,7 @@ export default function CreateBill() {
 
   const [error, setError] = useState('');
   const [paymentHistory, setPaymentHistory] = useState<PaymentEntry[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
     if (id && existingInvoice) {
@@ -166,11 +168,19 @@ export default function CreateBill() {
         setReceivedAmount('');
       }
 
-      // Extract numeric values from existing invoices
-      const numericInvoices = invoices.map(inv => {
-        const num = parseInt(inv.invoiceNumber.replace(/\D/g, ''));
-        return isNaN(num) ? 0 : num;
-      });
+      // Extract only the sequence number (last whitespace-separated token) from invoice numbers.
+      // e.g. "JUN 057" → 57, "MAY 012" → 12.
+      // IMPORTANT: Skip any number > 999 (4+ digits) — these are bad/manual entries (e.g. "JUN 1003")
+      // that do NOT represent the real sequence and should not affect the next bill number.
+      const numericInvoices = invoices
+        .map(inv => {
+          const parts = inv.invoiceNumber.trim().split(/\s+/);
+          // Use only the last segment (the numeric part after the month prefix)
+          const numPart = parts[parts.length - 1];
+          const num = parseInt(numPart.replace(/\D/g, ''), 10);
+          return isNaN(num) ? 0 : num;
+        })
+        .filter(num => num <= 999); // Ignore any incorrectly-entered 4+ digit numbers
       const maxNum = numericInvoices.length > 0 ? Math.max(...numericInvoices) : 0;
       const nextNum = maxNum + 1;
       const paddedNum = String(nextNum).padStart(3, '0');
@@ -212,6 +222,7 @@ export default function CreateBill() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (isSubmitting) return; // Prevent duplicate submissions
     setError('');
 
     if (!invoiceNumberInput.trim()) { setError('Invoice Number is required'); return; }
@@ -268,13 +279,6 @@ export default function CreateBill() {
       updateInvoice(newInvoice);
     } else {
       addInvoice(newInvoice);
-      // Automatically send "Thank you" SMS on new bill generation
-      if (newInvoice.customerPhone) {
-        const text = 'Thank you for visiting our photo studio. Please visit again!';
-        const phone = newInvoice.customerPhone.replace(/\D/g, '');
-        const finalPhone = phone.length === 10 ? '91' + phone : phone;
-        window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`, '_blank');
-      }
 
       // INSTANTLY RESET form states upon successful generation so no residual amount is displayed behind the preview modal
       setCustomerName('');
@@ -296,6 +300,7 @@ export default function CreateBill() {
       setReceivedAmount('');
     }
     setPreviewInvoice(newInvoice);
+    setIsSubmitting(true); // Lock button while preview/processing is open
   };
 
   return (
@@ -711,8 +716,13 @@ export default function CreateBill() {
 
                 <div className="pt-6">
                   {error && <p className="text-[10px] font-bold text-destructive mb-3">{error}</p>}
-                  <button type="submit" className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-3">
-                    <FileText className="w-4 h-4" /> {id ? 'Update Bill' : 'Generate Bill'}
+                  <button
+                    type="submit"
+                    disabled={isSubmitting}
+                    className="w-full py-4 rounded-xl bg-primary text-primary-foreground font-black text-xs uppercase tracking-widest hover:opacity-90 transition-all shadow-xl shadow-primary/20 flex items-center justify-center gap-3 disabled:opacity-60 disabled:cursor-not-allowed"
+                  >
+                    <FileText className="w-4 h-4" />
+                    {isSubmitting ? 'Processing...' : (id ? 'Update Bill' : 'Generate Bill')}
                   </button>
                 </div>
               </div>
@@ -770,8 +780,10 @@ export default function CreateBill() {
         <InvoicePreview
           invoice={previewInvoice}
           autoPrint={false}
+          isNew={!id}
           onClose={() => {
             setPreviewInvoice(null);
+            setIsSubmitting(false); // Re-enable button on modal close
             navigate('/sales-history');
             // Force quick reload to ensure 100% clean memory and state for the next bill
             window.location.reload();

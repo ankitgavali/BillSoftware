@@ -11,6 +11,14 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    proxy: {
+      '/api/whatapi': {
+        target: 'https://webhook.whatapi.in',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api\/whatapi/, ''),
+        secure: true,
+      },
+    },
   },
   plugins: [react(), mode === "development" && componentTagger()].filter(Boolean),
   resolve: {

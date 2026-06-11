@@ -60,7 +60,8 @@ export default function AllBills() {
         i.customerName?.toLowerCase().includes(query) ||
         i.invoiceNumber?.toLowerCase().includes(query)
       );
-    });
+    })
+    .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
   const handleDelete = (id: string, number: string) => {
     if (confirm(`Are you sure you want to delete bill ${number}?`)) {

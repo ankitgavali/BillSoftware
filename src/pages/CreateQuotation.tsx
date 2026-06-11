@@ -171,14 +171,6 @@ export default function CreateQuotation() {
       await updateQuotation(newQuotation);
     } else {
       await addQuotation(newQuotation);
-      // Automatically send "Quotation Estimate" Whatsapp on new generation
-      if (newQuotation.customerPhone) {
-        const itemListText = newQuotation.items.map(item => `- ${item.name} (${item.quantity}x @ ${fmt(item.price)})`).join('\n');
-        const text = `Hello ${newQuotation.customerName},\n\nHere is your custom Quotation estimate from PhotoBill Pro:\n\nQuotation #: ${newQuotation.quotationNumber}\nDate: ${new Date(newQuotation.createdAt).toLocaleDateString()}\n\nServices Estimate:\n${itemListText}\n\nEstimated Total: ${fmt(newQuotation.totalAmount)}\n\nThank you! Please let us know if you would like to proceed.`;
-        const phone = newQuotation.customerPhone.replace(/\D/g, '');
-        const finalPhone = phone.length === 10 ? '91' + phone : phone;
-        window.open(`https://wa.me/${finalPhone}?text=${encodeURIComponent(text)}`, '_blank');
-      }
 
       // Reset form fields
       setCustomerName('');
@@ -362,6 +354,7 @@ export default function CreateQuotation() {
         <QuotationPreview
           quotation={previewQuotation}
           autoPrint={false}
+          isNew={!id}
           onClose={() => {
             setPreviewQuotation(null);
             navigate('/quotations');
